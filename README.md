@@ -38,7 +38,9 @@ GitHub Pages 是**纯静态托管**，不能跑 Python 后端。本项目用「�
 
 ### 方式 A：一键发布（推荐，最简单）
 
-1. 在 GitHub 新建一个空仓库（如 `game-hub`）。
+> **已有 GitHub 仓库？** 直接用就行——不需要新建。只要你的仓库是空的（没有冲突文件），把下面第 1 步跳过，第 2 步的 `git remote add origin` 换成你自己的仓库地址即可。也可以双击 `push_code.bat`（先把里面的 `REPO_URL` 改成你的地址），它会自动设远程并推 `main`；再双击 `publish.bat` 推 `gh-pages`。
+
+1. 在 GitHub 新建一个空仓库（如 `game-hub`）——*已有仓库可跳过此步*。
 2. 在本机执行（首次需先关联远程）：
    ```bat
    cd gamehub-prototype
@@ -69,6 +71,7 @@ gamehub-prototype/
 ├── server.py            # 后端聚合层（标准库零依赖，python server.py 即跑）
 ├── build_snapshot.py    # 把 /api/all 导出成 web/data.json 静态快照
 ├── start.bat            # 本机一键启动（自动探测局域网 IP，DHCP 友好）
+├── push_code.bat        # 一键设远程 + 推 main 分支（代码备份）
 ├── publish.bat          # 一键构建快照 + 推送到 gh-pages
 ├── web/                 # 前端 + 静态站（GitHub Pages 发布内容）
 │   ├── index.html
