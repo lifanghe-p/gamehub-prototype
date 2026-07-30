@@ -79,13 +79,6 @@ a{color:inherit;text-decoration:none;cursor:pointer}
 .guide .tp{font-size:10px;padding:1px 6px;border-radius:5px;color:#fff}
 .tp.图文{background:var(--brand2)}.tp.视频{background:var(--hot)}
 
-/* twitch live heat */
-.twitch{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px}
-.tchip{min-width:132px;flex:0 0 auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 13px;box-shadow:var(--shadow)}
-.tchip .g{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tchip .v{color:var(--hot);font-weight:800;font-size:19px;margin-top:3px}
-.tchip .s{font-size:11px;color:var(--sub);margin-top:2px}
-
 /* youtube video cards */
 .yt{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .vcard{display:block;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);text-decoration:none;color:inherit}
