@@ -8,6 +8,7 @@
 """
 import json
 import os
+import re
 import urllib.request
 import urllib.error
 import concurrent.futures
@@ -84,25 +85,11 @@ SAMPLE_TRENDS = [
     {"topic":"Marvel Rivals new season","momentum":+30,"source":"Reddit r/marvelrivals","detail":"新赛季登顶热玩"},
     {"topic":"Monster Hunter Wilds 更新","momentum":+24,"source":"Twitter/X","detail":"新地图话题发酵"},
     {"topic":"Black Myth Wukong DLC 传闻","momentum":+19,"source":"Reddit r/gaming","detail":"销量里程碑带动二创"},
-    {"topic":"Helldivers 2 新战场","momentum":+17,"source":"Twitch","detail":"直播观看走高"},
+    {"topic":"Helldivers 2 新战场","momentum":+17,"source":"Steam","detail":"直播观看走高"},
     {"topic":"Lost Ark 西服更新","momentum":+13,"source":"Reddit r/lostark","detail":"老玩家回归潮"},
     {"topic":"Free Fire 新赛季","momentum":+11,"source":"YouTube","detail":"短视频热度上升"},
     {"topic":"Cyberpunk 2077 更新","momentum":+9,"source":"Steam","detail":"老玩家回流"},
 ]
-
-SAMPLE_TWITCH = [
-    {"game":"Just Chatting","viewers":285000,"streams":4200},
-    {"game":"League of Legends","viewers":198000,"streams":3100},
-    {"game":"VALORANT","viewers":142000,"streams":2400},
-    {"game":"GTA V","viewers":121000,"streams":1900},
-    {"game":"Counter-Strike 2","viewers":98000,"streams":1600},
-    {"game":"Fortnite","viewers":87000,"streams":1400},
-    {"game":"Marvel Rivals","viewers":76000,"streams":1200},
-    {"game":"Elden Ring","viewers":64000,"streams":980},
-    {"game":"Minecraft","viewers":59000,"streams":1500},
-    {"game":"Apex Legends","viewers":51000,"streams":870},
-]
-
 
 def hot_score(g):
     """综合热度分：在线人数(对数) + 趋势权重 + 平台覆盖"""
@@ -188,7 +175,7 @@ def fetch_rss_news():
     return out or None
 
 
-# ----------------------------- Twitch 实时直播热度（需凭证） -----------------------------
+# ----------------------------- 内存缓存（YouTube / Steam / Reddit 共用） -----------------------------
 import time as _time
 _CACHE = {}  # 简单内存缓存：key -> (expire_ts, data)
 
@@ -202,57 +189,6 @@ def _cache_get(key, ttl=300):
 
 def _cache_set(key, data, ttl=300):
     _CACHE[key] = (_time.time() + ttl, data)
-
-
-TWITCH_CID = os.environ.get("TWITCH_CLIENT_ID", "")
-TWITCH_SEC = os.environ.get("TWITCH_CLIENT_SECRET", "")
-
-
-def fetch_twitch_token():
-    if not (TWITCH_CID and TWITCH_SEC):
-        return None
-    cached = _cache_get("twitch_token", ttl=3600)
-    if cached:
-        return cached
-    try:
-        url = (f"https://id.twitch.tv/oauth2/token?client_id={TWITCH_CID}"
-               f"&client_secret={TWITCH_SEC}&grant_type=client_credentials")
-        req = urllib.request.Request(url, data=b"", method="POST", headers=UA)
-        with urllib.request.urlopen(req, timeout=5) as r:
-            d = json.loads(r.read().decode("utf-8", "ignore"))
-        tok = d.get("access_token")
-        if tok:
-            _cache_set("twitch_token", tok, ttl=3600)
-        return tok
-    except Exception:
-        return None
-
-
-def fetch_twitch_live():
-    """按观看人数聚合 top 直播游戏（取 top 100 直播流汇总 game_name）。"""
-    tok = fetch_twitch_token()
-    if not tok:
-        return None
-    cached = _cache_get("twitch_live", ttl=180)
-    if cached:
-        return cached
-    try:
-        url = "https://api.twitch.tv/helix/streams?first=100"
-        req = urllib.request.Request(url, headers={
-            "Client-Id": TWITCH_CID, "Authorization": f"Bearer {tok}"})
-        with urllib.request.urlopen(req, timeout=6) as r:
-            d = json.loads(r.read().decode("utf-8", "ignore"))
-        agg = {}
-        for s in d.get("data", []):
-            g = s.get("game_name") or "其他"
-            a = agg.setdefault(g, {"game": g, "viewers": 0, "streams": 0})
-            a["viewers"] += s.get("viewer_count", 0)
-            a["streams"] += 1
-        out = sorted(agg.values(), key=lambda x: x["viewers"], reverse=True)[:10]
-        _cache_set("twitch_live", out, ttl=180)
-        return out or None
-    except Exception:
-        return None
 
 
 # ----------------------------- YouTube 攻略视频（免 key，search RSS） -----------------------------
@@ -359,6 +295,78 @@ def fetch_reddit_search(query, limit=3):
     return out or None
 
 
+# ----------------------------- Steam 社区指南 + Fextralife Wiki 深度抓取 -----------------------------
+def now_str():
+    return _dt.now().strftime("%Y-%m-%d %H:%M")
+
+
+FEXT_WIKI = {
+    "elden": "https://eldenring.wiki.fextralife.com/",
+    "bg3": "https://bg3.wiki.fextralife.com/",
+    "cyberpunk": "https://cyberpunk2077.wiki.fextralife.com/",
+    "wukong": "https://blackmythwukong.wiki.fextralife.com/",
+}
+
+
+def fetch_steam_community_guides(appid, limit=3):
+    """抓取 Steam 社区指南列表（HTML 解析，无需 key）。"""
+    ck = "steamguide_" + str(appid)
+    cached = _cache_get(ck, ttl=600)
+    if cached is not None:
+        return cached
+    url = (f"https://steamcommunity.com/app/{appid}/guides/"
+           f"?browsefilter=mostrecent&p=1&language=english")
+    html = _http_get(url, timeout=5, is_json=False)
+    out = []
+    if html:
+        try:
+            for m in re.finditer(r'class="gotoGuide"[^>]*href="([^"]+)"', html):
+                seg = html[m.end(): m.end() + 500]
+                tm = re.search(r'class="guideName">([^<]+)<', seg)
+                title = tm.group(1).strip() if tm else ""
+                href = m.group(1)
+                if title and href:
+                    if not href.startswith("http"):
+                        href = "https://steamcommunity.com" + href
+                    out.append({"title": title[:60], "url": href})
+                    if len(out) >= limit:
+                        break
+        except Exception:
+            out = []
+    _cache_set(ck, out, ttl=600)
+    return out or None
+
+
+def fetch_fextralife_wiki(url, limit=4):
+    """深度抓取 Fextralife 维基首页，提取攻略/词条链接（HTML 解析）。"""
+    ck = "fextra_" + url
+    cached = _cache_get(ck, ttl=600)
+    if cached is not None:
+        return cached
+    html = _http_get(url, timeout=5, is_json=False)
+    out = []
+    if html:
+        try:
+            host = url.split("/")[2]
+            seen = set()
+            for m in re.finditer(r'href="(/[^"?]+)"[^>]*>([^<]+)</a>', html):
+                href, txt = m.group(1), m.group(2).strip()
+                if len(txt) < 3 or txt in seen:
+                    continue
+                if any(s in href.lower() for s in ("special:", "category:", "file:", "template:", "user:", "help:")):
+                    continue
+                if txt.lower() in ("home", "wiki", "login", "search", "edit", "history", "discuss", "random"):
+                    continue
+                seen.add(txt)
+                out.append({"title": txt[:60], "url": "https://" + host + href})
+                if len(out) >= limit:
+                    break
+        except Exception:
+            out = []
+    _cache_set(ck, out, ttl=600)
+    return out or None
+
+
 # ----------------------------- 聚合接口 -----------------------------
 def api_games(params):
     games = []
@@ -397,23 +405,33 @@ def api_news(params):
 
 
 def api_guides(params):
-    """攻略实时化：并行聚合 YouTube 视频攻略 + Steam 官方资讯 + Reddit 社区讨论，
-    按时间倒序；任一真实源成功即标记 live=True，否则回退样例。"""
-    games = sorted(SAMPLE_GAMES, key=hot_score, reverse=True)[:14]
+    """攻略实时化：并行聚合 YouTube 视频攻略 + Steam 官方资讯 + Steam 社区指南
+    + Fextralife Wiki + Reddit 社区讨论，按时间倒序；任一真实源成功即标记 live=True。"""
+    games = sorted(SAMPLE_GAMES, key=hot_score, reverse=True)[:16]
+    top_ids = {g["id"] for g in games}
     results = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
         f_yt = {g["id"]: ex.submit(fetch_youtube_guides, [f"{g['name_en']} guide"], per=1) for g in games}
         f_steam = {gid: ex.submit(fetch_steam_news, aid)
-                   for gid, aid in STEAM_APPID.items() if any(g["id"] == gid for g in games)}
+                   for gid, aid in STEAM_APPID.items() if gid in top_ids}
+        f_sg = {gid: ex.submit(fetch_steam_community_guides, aid)
+                for gid, aid in STEAM_APPID.items() if gid in top_ids}
+        f_fx = {gid: ex.submit(fetch_fextralife_wiki, FEXT_WIKI[gid])
+                for gid in top_ids if gid in FEXT_WIKI}
         f_rd = {g["id"]: ex.submit(fetch_reddit_search, g["name_en"]) for g in games}
         for gid, f in f_yt.items():
             results.setdefault(gid, {})["yt"] = f.result()
         for gid, f in f_steam.items():
             results.setdefault(gid, {})["steam"] = f.result()
+        for gid, f in f_sg.items():
+            results.setdefault(gid, {})["sg"] = f.result()
+        for gid, f in f_fx.items():
+            results.setdefault(gid, {})["fx"] = f.result()
         for gid, f in f_rd.items():
             results.setdefault(gid, {})["reddit"] = f.result()
 
     items = []
+    ns = now_str()
     for g in games:
         gid, name = g["id"], g["name"]
         r = results.get(gid, {})
@@ -429,6 +447,18 @@ def api_guides(params):
                 items.append({"game": name, "title": n.get("title", ""),
                               "type": "图文", "source": "Steam 官方", "lang": "英",
                               "ts": _iso(n.get("ts_raw", 0)).replace("T", " "), "url": n.get("url", "")})
+        sg = r.get("sg")
+        if sg:
+            for n in sg:
+                items.append({"game": name, "title": n.get("title", ""),
+                              "type": "图文", "source": "Steam 社区", "lang": "英",
+                              "ts": ns, "url": n.get("url", "")})
+        fx = r.get("fx")
+        if fx:
+            for n in fx:
+                items.append({"game": name, "title": n.get("title", ""),
+                              "type": "图文", "source": "Fextralife Wiki", "lang": "英",
+                              "ts": ns, "url": n.get("url", "")})
         rd = r.get("reddit")
         if rd:
             for n in rd:
@@ -441,16 +471,8 @@ def api_guides(params):
         items = SAMPLE_GUIDES
     else:
         items.sort(key=lambda x: (x.get("ts") or ""), reverse=True)
-        items = items[:18]
+        items = items[:20]
     return {"updated": "now", "live": live, "count": len(items), "data": items}
-
-
-def api_twitch(params):
-    data = fetch_twitch_live()
-    live = data is not None
-    if not live:
-        data = SAMPLE_TWITCH
-    return {"updated": "now", "live": live, "count": len(data), "data": data}
 
 
 def api_yt(params):
@@ -507,15 +529,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, api_news(qs))
         if path == "/api/guides":
             return self._send(200, api_guides(qs))
-        if path == "/api/twitch":
-            return self._send(200, api_twitch(qs))
         if path == "/api/yt":
             return self._send(200, api_yt(qs))
         if path == "/api/all":
             return self._send(200, {
                 "games": api_games(qs), "trends": api_trends(qs),
                 "news": api_news(qs), "guides": api_guides(qs),
-                "twitch": api_twitch(qs), "yt": api_yt(qs)})
+                "yt": api_yt(qs)})
         self._send(404, {"error": "not found"})
 
     def _serve_file(self, fp, ctype=None):

@@ -18,16 +18,13 @@ python server.py
 - 有后端时，数据走 `/api/*` 实时聚合（Steam 官方资讯 / Reddit 讨论 / RSS 新闻 等尽力实时拉取，失败回退样例）。
 - 本机局域网访问：双击 `start.bat` 会自动探测本机 IP 并绑定（适合 DHCP 环境），同网段手机/电脑可访问。
 
-### 让攻略/直播真正“实时”
-- **YouTube 攻略视频**：免 key，只要能联网访问 youtube.com 即自动真实化。
-- **Twitch 直播热度**：需要一对免费凭证。
-  1. 打开 https://dev.twitch.tv/console/apps 注册应用，拿到 Client ID / Secret
-  2. 启动前设置环境变量再运行：
-     ```bat
-     set TWITCH_CLIENT_ID=你的ID
-     set TWITCH_CLIENT_SECRET=你的密钥
-     python server.py
-     ```
+### 让攻略真正“实时”
+攻略聚合了 5 类来源，联网即真实、离线回退样例：
+- **YouTube 攻略视频**：免 key，联网访问 youtube.com 即真实。
+- **Steam 社区指南**：免 key，按游戏 appid 抓取社区攻略列表（HTML 解析）。
+- **Fextralife Wiki**：免 key，深度抓取对应游戏维基首页的词条/攻略链接。
+- **Steam 官方资讯**：免 key（ISteamNews）。
+- **Reddit 社区讨论**：免 key（search.json）。
 
 ---
 
@@ -89,8 +86,9 @@ gamehub-prototype/
 | 🔥 热门榜单 | 内置精选样例（30 款，全球向） |
 | ⚡ 实时热点 | Reddit r/Games（尽力实时，失败回退样例） |
 | 📰 最新资讯 | IGN / GameSpot / Gematsu / PCGamer / VG247 / Polygon RSS |
-| 📺 Twitch 直播热度 | Twitch Helix（需凭证，否则样例） |
 | 🎬 YouTube 攻略视频 | YouTube 公开 search RSS（免 key，联网即真实） |
-| 📘 攻略（实时化） | YouTube 视频攻略 + Steam 官方资讯(ISteamNews) + Reddit 社区讨论，按时间聚合 |
+| 📘 Steam 社区指南 | Steam 社区指南列表（免 key，HTML 解析，联网即真实） |
+| 📗 Fextralife Wiki | Fextralife 维基首页深度抓取（免 key，联网即真实） |
+| 📘 攻略（实时化） | YouTube 视频 + Steam 社区指南 + Fextralife Wiki + Steam 官方资讯 + Reddit 讨论，按时间聚合 |
 
 > 合规：遵守各源 ToS 与 robots.txt，标注来源与原文链接，控制请求频率。

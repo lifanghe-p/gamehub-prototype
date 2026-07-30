@@ -65,14 +65,6 @@ function renderGuides(list) {
       <span><span class="tp ${g.type}">${g.type}</span> ${(g.ts || "").slice(0, 16)}</span></div></a>`).join("");
 }
 
-function renderTwitch(list) {
-  $("#twitch").innerHTML = list.map(t => `<div class="tchip">
-    <div class="g">${t.game}</div>
-    <div class="v">${fmtPlayers(t.viewers)}</div>
-    <div class="s">${fmtPlayers(t.streams)} 个直播</div>
-  </div>`).join("");
-}
-
 function renderYT(list) {
   if (!list || !list.length) {
     $("#yt").innerHTML = `<div class="yt-note">🎬 实时攻略视频需联网获取，当前暂不可用（已回退图文攻略）。</div>`;
@@ -111,14 +103,12 @@ function renderAll() {
   renderTrends(BUNDLE.trends.data);
   renderNews(BUNDLE.news.data);
   renderGuides(BUNDLE.guides.data);
-  renderTwitch(BUNDLE.twitch.data);
   renderYT(BUNDLE.yt.data);
   applyFilters();
   $("#trendHint").textContent = BUNDLE.trends.live ? "实时(Reddit)" : "样例";
-  $("#twitchHint").textContent = BUNDLE.twitch.live ? "实时(Twitch)" : "样例";
   $("#guideHint").textContent = BUNDLE.guides.live ? "实时聚合" : "样例";
   $("#ytHint").textContent = BUNDLE.yt.live ? "实时(YouTube)" : "样例/暂不可用";
-  const liveAny = BUNDLE.trends.live || BUNDLE.news.live || BUNDLE.twitch.live || BUNDLE.yt.live;
+  const liveAny = BUNDLE.trends.live || BUNDLE.news.live || BUNDLE.yt.live;
   setLive(liveAny, STATIC ? "静态快照(公网)" : (liveAny ? "实时数据" : "样例数据(离线)"));
 }
 
