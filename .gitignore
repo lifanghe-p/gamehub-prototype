@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 项目记忆（不入库）
+.workbuddy/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 本地环境变量（含密钥）
+.env
