@@ -54,15 +54,33 @@ function renderNews(list) {
       <span><span class="lang">${n.lang}</span> ${n.ts || ""}</span></div></div>`).join("");
 }
 
+// 攻略来源图标元数据（按 source 名称映射，稳定）
+const SOURCE_META = {
+  "YouTube":         { cls: "youtube",        ic: "▶",  label: "YouTube" },
+  "Steam 官方":       { cls: "steam",          ic: "🎮", label: "Steam 官方" },
+  "Steam 社区":       { cls: "steam-community", ic: "💬", label: "Steam 社区" },
+  "Fextralife Wiki":  { cls: "fextra",         ic: "📖", label: "Fextralife" },
+  "Fextralife":       { cls: "fextra",         ic: "📖", label: "Fextralife" },
+  "Reddit":           { cls: "reddit",         ic: "👽", label: "Reddit" },
+};
+function srcMeta(s) { return SOURCE_META[s] || { cls: "other", ic: "🔗", label: s }; }
+
 function renderGuides(list) {
   if (!list || !list.length) {
     $("#guides").innerHTML = `<div class="yt-note">暂无攻略数据（可在本机运行后端获取实时攻略）。</div>`;
     return;
   }
-  $("#guides").innerHTML = list.map(g => `<a class="nitem guide" href="${g.url || "#"}" target="_blank" rel="noopener">
+  $("#guides").innerHTML = list.map(g => {
+    const m = srcMeta(g.source);
+    return `<a class="nitem guide" href="${g.url || "#"}" target="_blank" rel="noopener">
     <div class="t">${g.title}</div>
-    <div class="m"><span>${g.game} · ${g.source}</span>
-      <span><span class="tp ${g.type}">${g.type}</span> ${(g.ts || "").slice(0, 16)}</span></div></a>`).join("");
+    <div class="m"><span>
+      <span class="src-badge ${m.cls}"><span class="ic">${m.ic}</span>${m.label}</span>
+      <span class="tp ${g.type}">${g.type}</span>
+      ${g.game}
+    </span>
+    <span>${(g.ts || "").slice(0, 16)}</span></div></a>`;
+  }).join("");
 }
 
 function renderYT(list) {
