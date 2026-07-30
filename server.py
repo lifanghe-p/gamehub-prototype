@@ -20,6 +20,15 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(BASE, "web")
 PORT = int(os.environ.get("PORT", "8000"))
 HOST = os.environ.get("HOST", "0.0.0.0")
+# 可选：填了就用 YouTube Data API v3 抓真实攻略视频；留空则自动回退（search RSS 已废弃 / 离线样例）
+# 取值优先级：环境变量 YOUTUBE_API_KEY > 同目录 config.json 的 youtube_api_key 字段
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
+if not YOUTUBE_API_KEY:
+    try:
+        _cfg = json.load(open(os.path.join(BASE, "config.json"), encoding="utf-8"))
+        YOUTUBE_API_KEY = _cfg.get("youtube_api_key", "") or ""
+    except Exception:
+        YOUTUBE_API_KEY = ""
 
 # ----------------------------- 精选样例数据 -----------------------------
 # region: 中国 / 全球 / 日本 / 欧美 ; platform: PC / 主机 / 移动
@@ -235,6 +244,52 @@ def fetch_youtube_guides(queries, per=2):
     return out
 
 
+def fetch_youtube_via_api(queries, api_key, per=2):
+    """YouTube Data API v3（search.list）：需要 YOUTUBE_API_KEY，返回真实攻略视频。"""
+    ck = "ytapi_" + "|".join(queries)
+    cached = _cache_get(ck, ttl=600)
+    if cached is not None:
+        return cached
+    out = []
+    for q in queries:
+        url = ("https://www.googleapis.com/youtube/v3/search"
+               "?part=snippet&type=video&maxResults=%d&order=relevance"
+               "&q=%s&key=%s") % (per, urllib.parse.quote(q), api_key)
+        d = _http_get(url, timeout=8)
+        if not d:
+            continue
+        try:
+            for item in d.get("items", []):
+                vid = (item.get("id") or {}).get("videoId")
+                sn = item.get("snippet") or {}
+                if not vid:
+                    continue
+                th = (sn.get("thumbnails") or {})
+                thumb = (th.get("medium") or th.get("default") or {}).get("url", "")
+                out.append({
+                    "title": (sn.get("title") or "")[:70],
+                    "videoId": vid,
+                    "channel": sn.get("channelTitle", ""),
+                    "published": (sn.get("publishedAt") or "")[:10],
+                    "thumb": thumb,
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                    "query": q,
+                })
+        except Exception:
+            continue
+    _cache_set(ck, out, ttl=600)
+    return out
+
+
+def fetch_youtube_dispatch(queries, per=2):
+    """统一 YouTube 抓取入口：有 API key 走 Data API v3，否则走公开 search RSS（已废弃，多回退空）。"""
+    if YOUTUBE_API_KEY:
+        data = fetch_youtube_via_api(queries, YOUTUBE_API_KEY, per=per)
+        if data:
+            return data
+    return fetch_youtube_guides(queries, per=per)
+
+
 # ----------------------------- Steam 官方资讯 / Reddit 社区讨论（攻略实时化） -----------------------------
 # 仅 Steam 平台游戏有 appid，用于拉取官方新闻/更新作为图文攻略来源
 STEAM_APPID = {
@@ -418,7 +473,7 @@ def api_guides(params):
     results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=32) as ex:
         # YouTube / Reddit 仅对热门榜（控制请求量）
-        f_yt = {g["id"]: ex.submit(fetch_youtube_guides, [f"{g['name_en']} guide"], per=1) for g in top}
+        f_yt = {g["id"]: ex.submit(fetch_youtube_dispatch, [f"{g['name_en']} guide"], per=1) for g in top}
         f_rd = {g["id"]: ex.submit(fetch_reddit_search, g["name_en"]) for g in top}
         # Steam 官方 / 社区指南：覆盖全部带映射游戏
         f_steam = {gid: ex.submit(fetch_steam_news, STEAM_APPID[gid]) for gid in steam_ids}
@@ -487,13 +542,18 @@ def api_guides(params):
             trimmed += lst[:cap]
         trimmed.sort(key=lambda x: (x.get("ts") or ""), reverse=True)
         items = trimmed[:20]
+    # 给每条攻略打上稳定的来源标识，供前端渲染图标
+    SRC_KEY = {"YouTube": "youtube", "Steam 官方": "steam", "Steam 社区": "steam-community",
+               "Fextralife Wiki": "fextra", "Reddit": "reddit"}
+    for it in items:
+        it["srcKey"] = SRC_KEY.get(it.get("source", ""), "other")
     return {"updated": "now", "live": live, "count": len(items), "data": items}
 
 
 def api_yt(params):
     top = SAMPLE_GAMES[:8]
     queries = [f"{g['name_en']} guide" for g in top]
-    data = fetch_youtube_guides(queries, per=2)
+    data = fetch_youtube_dispatch(queries, per=2)
     if not data:
         # 离线/无网络回退：给出指向 YouTube 搜索的可用卡片（点击即真实搜索）
         data = [{
