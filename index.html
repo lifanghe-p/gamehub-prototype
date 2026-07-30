@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🌐 全球游戏热点聚合站 · 原型</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">🎮 <b>GameHub</b> <span class="beta">原型</span></div>
+  <nav class="nav">
+    <a class="active" data-tab="all">综合</a>
+    <a data-tab="hot">热门榜</a>
+    <a data-tab="trend">实时热点</a>
+    <a data-tab="guide">攻略库</a>
+  </nav>
+  <div class="search">
+    <input id="search" placeholder="搜索游戏 / 关键词…" />
+  </div>
+  <div class="live"><span id="liveDot" class="dot"></span><span id="liveText">连接中…</span></div>
+  <button id="refresh" class="refresh">↻ 刷新</button>
+</header>
+
+<div class="layout">
+  <!-- 左：筛选 -->
+  <aside class="side">
+    <h3>地区</h3>
+    <div class="chips" id="f-region">
+      <button class="chip active" data-v="">全部</button>
+      <button class="chip" data-v="全球">全球</button>
+      <button class="chip" data-v="欧美">欧美</button>
+      <button class="chip" data-v="日本">日本</button>
+      <button class="chip" data-v="韩国">韩国</button>
+    </div>
+    <h3>平台</h3>
+    <div class="chips" id="f-platform">
+      <button class="chip active" data-v="">全部</button>
+      <button class="chip" data-v="PC">PC</button>
+      <button class="chip" data-v="主机">主机</button>
+      <button class="chip" data-v="移动">移动</button>
+    </div>
+    <h3>类型</h3>
+    <div class="chips" id="f-genre">
+      <button class="chip active" data-v="">全部</button>
+      <button class="chip" data-v="RPG">RPG</button>
+      <button class="chip" data-v="射击">射击</button>
+      <button class="chip" data-v="MOBA">MOBA</button>
+      <button class="chip" data-v="策略">策略</button>
+      <button class="chip" data-v="动作">动作</button>
+    </div>
+    <div class="stat" id="stat"></div>
+  </aside>
+
+  <!-- 中：热门游戏榜 -->
+  <main class="main">
+    <div class="sec-head"><h2>🔥 热门游戏榜</h2><span class="hint" id="gamesHint"></span></div>
+    <div id="games" class="games"></div>
+
+    <div class="sec-head"><h2>⚡ 实时热点流</h2><span class="hint" id="trendHint"></span></div>
+    <div id="trends" class="trends"></div>
+
+    <div class="sec-head"><h2>📺 Twitch 直播热度</h2><span class="hint" id="twitchHint"></span></div>
+    <div id="twitch" class="twitch"></div>
+  </main>
+
+  <!-- 右：新闻 + 攻略 -->
+  <aside class="side right">
+    <div class="sec-head"><h2>📰 最新资讯</h2></div>
+    <div id="news" class="news"></div>
+    <div class="sec-head"><h2>📘 最新攻略</h2><span class="hint" id="guideHint"></span></div>
+    <div id="guides" class="guides"></div>
+    <div class="sec-head"><h2>🎬 YouTube 攻略视频</h2><span class="hint" id="ytHint"></span></div>
+    <div id="yt" class="yt"></div>
+  </aside>
+</div>
+
+<footer class="foot">全球游戏热点聚合站 · 全球向 MVP 原型 · 数据：全球/欧美/日本/韩国游戏精选样例，热点/资讯尽力实时拉取（Reddit/RSS：IGN/GameSpot/Gematsu…），失败回退样例</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
