@@ -101,7 +101,10 @@ def hot_score(g):
 
 
 # ----------------------------- 实时适配器（尽力拉取） -----------------------------
-UA = {"User-Agent": "GameHubPrototype/1.0 (educational demo)"}
+# 用浏览器 UA：部分站点（Reddit/Steam 社区）对默认 Python UA 会 403，
+# 本机家庭宽带运行时浏览器 UA 能大幅提升真实源命中率。
+UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
 
 
 def _http_get(url, timeout=4, is_json=True):
@@ -257,7 +260,7 @@ def fetch_steam_news(appid, limit=3):
         return cached
     url = (f"https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/"
            f"?appid={appid}&count={limit}&l=english")
-    d = _http_get(url, timeout=4)
+    d = _http_get(url, timeout=8)
     out = []
     if d:
         try:
@@ -315,19 +318,18 @@ def fetch_steam_community_guides(appid, limit=3):
     if cached is not None:
         return cached
     url = (f"https://steamcommunity.com/app/{appid}/guides/"
-           f"?browsefilter=mostrecent&p=1&language=english")
-    html = _http_get(url, timeout=5, is_json=False)
+           f"?browsefilter=toprated&p=1&language=english")
+    html = _http_get(url, timeout=12, is_json=False)
     out = []
     if html:
         try:
-            for m in re.finditer(r'class="gotoGuide"[^>]*href="([^"]+)"', html):
-                seg = html[m.end(): m.end() + 500]
-                tm = re.search(r'class="guideName">([^<]+)<', seg)
-                title = tm.group(1).strip() if tm else ""
+            # 真实结构：<a href=".../sharedfiles/filedetails/?id=数字"> ... <div class="workshopItemTitle">标题</div>
+            for m in re.finditer(r'href="(https://steamcommunity\.com/sharedfiles/filedetails/\?id=\d+)"', html):
                 href = m.group(1)
-                if title and href:
-                    if not href.startswith("http"):
-                        href = "https://steamcommunity.com" + href
+                seg = html[m.end(): m.end() + 2000]
+                tm = re.search(r'class="workshopItemTitle">([^<]+)<', seg)
+                title = tm.group(1).strip() if tm else ""
+                if title and len(title) >= 3:
                     out.append({"title": title[:60], "url": href})
                     if len(out) >= limit:
                         break
@@ -343,7 +345,7 @@ def fetch_fextralife_wiki(url, limit=4):
     cached = _cache_get(ck, ttl=600)
     if cached is not None:
         return cached
-    html = _http_get(url, timeout=5, is_json=False)
+    html = _http_get(url, timeout=15, is_json=False)
     out = []
     if html:
         try:
@@ -407,18 +409,22 @@ def api_news(params):
 def api_guides(params):
     """攻略实时化：并行聚合 YouTube 视频攻略 + Steam 官方资讯 + Steam 社区指南
     + Fextralife Wiki + Reddit 社区讨论，按时间倒序；任一真实源成功即标记 live=True。"""
-    games = sorted(SAMPLE_GAMES, key=hot_score, reverse=True)[:16]
-    top_ids = {g["id"] for g in games}
+    games = sorted(SAMPLE_GAMES, key=hot_score, reverse=True)
+    top = games[:16]
+    top_ids = {g["id"] for g in top}
+    # 真实源覆盖：所有带 Steam appid / Fextralife 映射的游戏（不限热门榜）
+    steam_ids = {g["id"] for g in SAMPLE_GAMES if g["id"] in STEAM_APPID}
+    fx_ids = {g["id"] for g in SAMPLE_GAMES if g["id"] in FEXT_WIKI}
     results = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
-        f_yt = {g["id"]: ex.submit(fetch_youtube_guides, [f"{g['name_en']} guide"], per=1) for g in games}
-        f_steam = {gid: ex.submit(fetch_steam_news, aid)
-                   for gid, aid in STEAM_APPID.items() if gid in top_ids}
-        f_sg = {gid: ex.submit(fetch_steam_community_guides, aid)
-                for gid, aid in STEAM_APPID.items() if gid in top_ids}
-        f_fx = {gid: ex.submit(fetch_fextralife_wiki, FEXT_WIKI[gid])
-                for gid in top_ids if gid in FEXT_WIKI}
-        f_rd = {g["id"]: ex.submit(fetch_reddit_search, g["name_en"]) for g in games}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as ex:
+        # YouTube / Reddit 仅对热门榜（控制请求量）
+        f_yt = {g["id"]: ex.submit(fetch_youtube_guides, [f"{g['name_en']} guide"], per=1) for g in top}
+        f_rd = {g["id"]: ex.submit(fetch_reddit_search, g["name_en"]) for g in top}
+        # Steam 官方 / 社区指南：覆盖全部带映射游戏
+        f_steam = {gid: ex.submit(fetch_steam_news, STEAM_APPID[gid]) for gid in steam_ids}
+        f_sg = {gid: ex.submit(fetch_steam_community_guides, STEAM_APPID[gid]) for gid in steam_ids}
+        # Fextralife Wiki：覆盖全部映射游戏
+        f_fx = {gid: ex.submit(fetch_fextralife_wiki, FEXT_WIKI[gid]) for gid in fx_ids}
         for gid, f in f_yt.items():
             results.setdefault(gid, {})["yt"] = f.result()
         for gid, f in f_steam.items():
@@ -432,7 +438,7 @@ def api_guides(params):
 
     items = []
     ns = now_str()
-    for g in games:
+    for g in SAMPLE_GAMES:
         gid, name = g["id"], g["name"]
         r = results.get(gid, {})
         yt = r.get("yt")
@@ -470,8 +476,17 @@ def api_guides(params):
     if not live:
         items = SAMPLE_GUIDES
     else:
-        items.sort(key=lambda x: (x.get("ts") or ""), reverse=True)
-        items = items[:20]
+        # 来源多样性：每个来源最多保留 cap 条，避免单一来源刷屏，再按时间倒序取前 20
+        cap = 6
+        buckets = {}
+        for it in items:
+            buckets.setdefault(it["source"], []).append(it)
+        trimmed = []
+        for src, lst in buckets.items():
+            lst.sort(key=lambda x: (x.get("ts") or ""), reverse=True)
+            trimmed += lst[:cap]
+        trimmed.sort(key=lambda x: (x.get("ts") or ""), reverse=True)
+        items = trimmed[:20]
     return {"updated": "now", "live": live, "count": len(items), "data": items}
 
 
